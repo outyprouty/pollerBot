@@ -1,5 +1,6 @@
 # bot.py
 import os
+from datetime import datetime as dt
 
 from discord.ext import commands
 from dotenv import load_dotenv
@@ -9,7 +10,7 @@ load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 WRITE_ID = int(os.getenv('WRITE_POLL'))
 ANS_ID = int(os.getenv('ANS_POLL'))
-ANS_ID = int(os.getenv('LOG_POLL'))
+LOG_ID = int(os.getenv('LOG_POLL'))
 
 class Poll:
 
@@ -60,20 +61,19 @@ class Poll:
         if self.open:
             if emoji == Poll.cancelEmoji:
                 self.cancelCtr += 1
-                
                 if self.cancelCtr >= 2:
                     self.open = False
-                    return -2, "Poll Closed"
-                return 0, "Success"
+                    return -2, "Poll Successfully Closed"
+                return 0, "Partial Closing Conditions Met"
             if user in self.responded:
-                return -1, "Already responded"
+                return -1, "User already responded to poll"
             try:
                 voteIndex = Poll.reactions.index(emoji)
             except ValueError as err:
-                return -1, "Wrong emoji Used!"
+                return -1, "Wrong emoji used for vote"
             self.results[voteIndex] += 1
             self.responded.append(user)
-            return 0,'Success'
+            return 0,'Successful Vote'
         else:
             return -2, "Poll Closed"
     
@@ -119,27 +119,33 @@ Poller Polls! Offering Anonymous Polling
 polls = []
 pollIDs = []
 bot = commands.Bot(command_prefix='!')
-writeChan = bot.get_channel(WRITE_ID)
-ansChan = bot.get_channel(ANS_ID)
-logChan = bot.get_channel(LOG_ID)
+
+async def log(s):
+    dateStr = dt.now().strftime("%Y%m%d-%H%M%S :: ")
+    logChan = bot.get_channel(LOG_ID)
+    await logChan.send(dateStr + s)
 
 #Just to let logs know bot is ready
 @bot.event
 async def on_ready():
-    print('Bot ready')
+    await log('Bot ready')
 
 @bot.command(name='newPoll')
 async def newPoll(ctx, *args):
+    await log('New poll creation attempted')
     try:
         #If pollcre8 channel
         if ctx.channel.id == WRITE_ID:
             #Input checking
             if len(args) < 3:
                 #Write help string to user in pollcre8
+                writeChan = bot.get_channel(WRITE_ID)
                 await writeChan.send("Not enough arguments.\n" + helpStr)
+                await log('Wrong format for newPoll')
                 return
             #Create new Poll object 
             newPoll = Poll(args[0], args[1:])
+            await log('New Poll created!')
             
             #Get number of poll options
             numOpts = newPoll.getNumOptions()
@@ -147,7 +153,8 @@ async def newPoll(ctx, *args):
             #Define pollString aka Question and Answers string
             pollStr = newPoll.getPollString()
 
-            #Write the poll to the channel
+            #Write the poll to the channel, recover message
+            ansChan = bot.get_channel(ANS_ID)
             msg  = await ansChan.send(pollStr)
            
             #Add the reactions to the poll! 
@@ -160,18 +167,23 @@ async def newPoll(ctx, *args):
             #This is clerical -- keeping track of polls
             polls.append(newPoll)
             pollIDs.append(polls[-1].getID())
+            await log('New Poll creation success')
             
     except AttributeError as err:
-        print(err)
+        await log(err)
+        await log('Closing Bot')
         await bot.close()
 
 @bot.event
 async def on_reaction_add(reaction, user):
     userName = user.name
     ID = reaction.message.id
+    await log('Reaction to a message. User: %s. ID: %d'%(userName, ID))
     try:
         tmpPoll = polls[pollIDs.index(ID)]
+        await log('Found cooresponding poll')
     except ValueError as err:
+        await log('ERROR: Could not find cooresponding poll!')
         return
  
     if userName != 'poller':
@@ -184,8 +196,13 @@ async def on_reaction_add(reaction, user):
         #Tally vote
         succ = tmpPoll.addVote(emoji, userName)
         
-        await writeChan.send(succ[1])
-        if succ[0] == -2:
+        writeChan = bot.get_channel(WRITE_ID)
+        if succ[0] == 0:
+            await log(succ[1])
+        elif succ[1] == 1:
+            await log(succ[1])
+        elif succ[0] == -2:
+            await log(succ[1])
             await writeChan.send(tmpPoll.getResults())
 
 @bot.command(name='rem')
