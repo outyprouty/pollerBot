@@ -13,6 +13,7 @@ ANS_ID = int(os.getenv('ANS_POLL'))
 class Poll:
 
     reactions = ['🇦', '🇧', '🇨', '🇩', '🇪', '🇫', '🇬', '🇭', '🇮', '🇯']
+    cancelEmoji = '🇿'
     
     def __init__(self, question, options):
         self.cancelCtr = 0
@@ -52,9 +53,14 @@ class Poll:
         return s
 
     def addVote(self, emoji, user):
-        if emoji == cancelEmoji:
-            self.cancelCtr ++
         if self.open:
+            if emoji == Poll.cancelEmoji:
+                self.cancelCtr += 1
+                
+                if self.cancelCtr >= 2:
+                    self.open = False
+                    return -2, "Poll Closed"
+                return 0, "Success"
             if user in self.responded:
                 return -1, "Already responded"
             try:
@@ -64,13 +70,20 @@ class Poll:
                 return -1, "Wrong emoji Used!"
             self.results[voteIndex] += 1
             self.responded.append(user)
-            return 0
+            return 0,'Success'
         else:
-            return -1, "Poll Closed"
+            return -2, "Poll Closed"
     
     def getResults(self):
-        s = "Results for poll ID #%d"%self.id
+        s = '-'*50
+        s += "Results for poll ID #%d"%self.id
         s += "\n"
+        if self.open:
+            s += "Poll is still open!"
+        else:
+            s += "Poll is closed!"
+        s += "\n"
+        
         s += self.question 
         s += "\n"
         for i in range(len(self.options)):
@@ -126,21 +139,31 @@ async def on_reaction_add(reaction, user):
     if userName != 'poller':
         #Get reaction
         emoji = reaction.emoji
+
         #Remove reaction
         await reaction.remove(user)
 
         #Tally vote
         succ = tmpPoll.addVote(emoji, userName)
         
-        if succ == 0:
-            print('Vote on poll %d!'%ID)
-            print(tmpPoll.getResults())
-        else:
+        if succ[0] == 0:
             print(succ[1])
+        elif succ[0] == -1:
+            print(succ[1])
+        elif succ[0] == -2:
+            print(succ[1])
+            print(tmpPoll.getResults())
+            
 
-@bot.command(name='stop')
+@bot.command(name='endBot')
 async def stop(ctx):
     if ctx.channel.id == WRITE_ID:
+        print("Bot ended by user command.")
+        print("Dumping all Poll results")
+        for p in polls:
+            print('-'*50)
+            print(p.getResults())
+            print('-'*50)
         await bot.close()
 
 bot.run(TOKEN)
