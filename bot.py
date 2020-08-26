@@ -1,10 +1,7 @@
 # bot.py
 import os
-import random
-import uuid
 
 from discord.ext import commands
-from discord.utils import find
 from dotenv import load_dotenv
 import discord
 
@@ -140,12 +137,6 @@ async def on_reaction_add(reaction, user):
             print(tmpPoll.getResults())
         else:
             print(succ[1])
-
-@bot.command(name='end')
-async def stop(ctx):
-    if ctx.channel.id == WRITE_ID:
-        print("Poll will stop ... ?")
-        
 
 @bot.command(name='stop')
 async def stop(ctx):
