@@ -1,2 +1,2 @@
 # pollerBot
-Discordances App for Anonymous Polling
+Discord App for Anonymous Polling
