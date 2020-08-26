@@ -9,6 +9,7 @@ load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 WRITE_ID = int(os.getenv('WRITE_POLL'))
 ANS_ID = int(os.getenv('ANS_POLL'))
+ANS_ID = int(os.getenv('LOG_POLL'))
 
 class Poll:
 
@@ -39,6 +40,9 @@ class Poll:
 
     def getID(self):
         return self.id
+    
+    def getNumOptions(self):
+        return len(self.options)
 
     def getPollString(self):
         s = ""
@@ -66,7 +70,6 @@ class Poll:
             try:
                 voteIndex = Poll.reactions.index(emoji)
             except ValueError as err:
-                print(err)
                 return -1, "Wrong emoji Used!"
             self.results[voteIndex] += 1
             self.responded.append(user)
@@ -76,6 +79,7 @@ class Poll:
     
     def getResults(self):
         s = '-'*50
+        s += "\n"
         s += "Results for poll ID #%d"%self.id
         s += "\n"
         if self.open:
@@ -91,41 +95,75 @@ class Poll:
             s += "\n"
         s += '-'*50
         return s
-        
+
+
+helpStr = \
+"""
+Poller Polls! Offering Anonymous Polling
+ Use:
+    In pollcre8 channel: !newPoll "Question" "Opt1" "Opt2" ... "OptN"
+        Support for N <= 10
+        Ensure question and options are in quotes
+    Instruct respondents to click a single emoji cooresponding to 
+        the choice of the respondent. Responses are recorded back-side.
+    Responses are visible to NO ONE but pollcre8 channel viewers.
+    No usernames are associated with responses in persistent logs.
+ Closing Poll:
+    React with :regional_indicator_z: twice on poll.
+    This will dump the results of this poll to the pollcre8 channel.
+ Closing Bot:
+    !endBot
+    This will dump all poll results from this session to pollcre8 channel.
+ Happy Polling!
+"""     
 polls = []
 pollIDs = []
 bot = commands.Bot(command_prefix='!')
+writeChan = bot.get_channel(WRITE_ID)
+ansChan = bot.get_channel(ANS_ID)
+logChan = bot.get_channel(LOG_ID)
 
-@bot.command(name='n')
+#Just to let logs know bot is ready
+@bot.event
+async def on_ready():
+    print('Bot ready')
+
+@bot.command(name='newPoll')
 async def newPoll(ctx, *args):
     try:
+        #If pollcre8 channel
         if ctx.channel.id == WRITE_ID:
+            #Input checking
             if len(args) < 3:
-                await ctx.send("Not enough arguments.")
+                #Write help string to user in pollcre8
+                await writeChan.send("Not enough arguments.\n" + helpStr)
                 return
-            numOpts = len(args) - 1
+            #Create new Poll object 
             newPoll = Poll(args[0], args[1:])
+            
+            #Get number of poll options
+            numOpts = newPoll.getNumOptions()
+            
+            #Define pollString aka Question and Answers string
             pollStr = newPoll.getPollString()
 
-            pollChan = bot.get_channel(ANS_ID)
-            msg  = await pollChan.send(pollStr)
-            
+            #Write the poll to the channel
+            msg  = await ansChan.send(pollStr)
+           
+            #Add the reactions to the poll! 
             for rea in Poll.reactions[:numOpts]:
                 await msg.add_reaction(rea)
 
             #This sets the poll ID and opens the poll
             newPoll.setID(msg.id)
 
+            #This is clerical -- keeping track of polls
             polls.append(newPoll)
             pollIDs.append(polls[-1].getID())
             
     except AttributeError as err:
         print(err)
         await bot.close()
-
-@bot.event
-async def on_ready():
-    print('Bot ready')
 
 @bot.event
 async def on_reaction_add(reaction, user):
@@ -146,14 +184,16 @@ async def on_reaction_add(reaction, user):
         #Tally vote
         succ = tmpPoll.addVote(emoji, userName)
         
-        if succ[0] == 0:
-            print(succ[1])
-        elif succ[0] == -1:
-            print(succ[1])
-        elif succ[0] == -2:
-            print(succ[1])
-            print(tmpPoll.getResults())
-            
+        await writeChan.send(succ[1])
+        if succ[0] == -2:
+            await writeChan.send(tmpPoll.getResults())
+
+@bot.command(name='rem')
+async def remove(ctx):
+    messages = await ctx.channel.history(limit=500).flatten()
+    for m in messages:
+        await m.delete()
+    
 
 @bot.command(name='endBot')
 async def stop(ctx):
